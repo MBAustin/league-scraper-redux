@@ -1,10 +1,12 @@
 import subprocess
 import sys
 import json
+import webbrowser
 import re
 import datetime
 from urllib import request
 from bs4 import BeautifulSoup
+from hashlib import md5
 
 
 class TournamentParser:
@@ -21,13 +23,16 @@ class TournamentParser:
         self.player_names = []
         self.team_ids = []
         self.series_ids = []
+        self.matches = []
+
 
         self.sql_statements = []
 
         self.REGIONS = ['NA', 'EU', 'LCK', 'LPL', 'LMS', 'GPL', 'CBLoL', 'LJL', 'TCL', 'LCL', 'OPL', 'CIS']
+        self.PFX = 'http://www.lolesports.com'
 
     def parse(self, url):
-        starting_url = url
+        # Handle loading from files:
         if self.do_load:
             with open(self.queue_file, 'r', encoding='utf-8') as qf:
                 self.url_q = json.load(qf)
@@ -36,43 +41,43 @@ class TournamentParser:
             with open(self.data_file, 'r', encoding='utf-8') as df:
                 self.sql_statements = json.load(df)
             self.do_load = False
-            starting_url = self.url_q.pop(0)
+            url = self.url_q.pop(0)
 
-        print('Parsing {0}'.format(starting_url))
-        self.seen_urls.append(starting_url)
+        self.seen_urls.append(url)
         self.render(url)
-        # self.parse_helper(url)
         with open(self.dump_file, 'r', encoding='utf-8') as html_dump:
             html = html_dump.read()
-        pfx = 'http://www.lolesports.com'
-        soup = BeautifulSoup(html, 'html.parser')
-        links = [link for link in soup.find_all('a')]
 
-        for link in links:
-            h = link.get('href') if link.get('href') else ''
-            if re.search('matches/|schedule/|stats/', h):
-                if (pfx + h) not in self.seen_urls and (pfx + h) not in self.url_q:
-                    print('Enqueueing schedule page: {0}'.format(h))
-                    self.url_q.append(pfx + h)
-            elif 'match-details' in h:
-                print('Found match details for {0}'.format(url))
-                self.retrieve_match(h, url, soup)
-            elif 'stats/' in url  and 'teams/' in h:
-                team_id = link.get_text()
-                if team_id not in self.team_ids:
-                    self.team_ids.append(team_id)
-                    print('Found team {0}'.format(team_id))
-                    self.retrieve_team(pfx + h, team_id)
+        soup = BeautifulSoup(html, 'html.parser')
+
+        if 'matches/' in url:
+            series_id = self.gen_id(self.tournament_id + url.split('/')[-1])
+            self.retrieve_series(url, series_id, soup)
+        else:
+            for link in soup.find_all('a'):
+                h = link.get('href') if link.get('href') else ''
+                if re.search('matches/|schedule/', h):
+                    if (self.PFX + h) not in self.seen_urls and (self.PFX + h) not in self.url_q:
+                        print('Enqueueing page: {0}'.format(h))
+                        self.url_q.append(self.PFX + h)
 
         if len(self.url_q) > 0:
             self.parse(self.url_q.pop(0))
         else:
-            print('Created {0} SQL inserts'.format(len(self.sql_statements)))
+            print('Found these {0} teams: '.format((len(self.team_ids))))
+            for t in self.team_ids:
+                print(str(t))
+            print('\nFound these {0} players: '.format(len(self.player_names)))
+            for p in self.player_names:
+                print(str(p))
+            print('\nFound these {0} matches: '.format(len(self.matches)))
+            for m in self.matches:
+                print(str(m))
+            print('\nCreated {0} SQL inserts'.format(len(self.sql_statements)))
             print('They are available in {0}'.format(self.data_file))
             with open(self.data_file, 'w', encoding='utf-8') as df:
                 json.dump(self.sql_statements, df)
             sys.exit(0)
-
 
     def render(self, url):
         args = ['python', 'render.py', url, self.dump_file]
@@ -94,41 +99,9 @@ class TournamentParser:
                     json.dump(self.seen_urls, sf)
                 with open(self.data_file, 'w', encoding='utf-8') as df:
                     json.dump(self.sql_statements, df)
-                print('Fatal QT Error: Dumped progress to files, add file names and "True" to \
-                       end of command line arguments and rerun.')
+                print('Fatal QT Error: Dumped progress to files, add file names and "True" to '
+                      'end of command line arguments and rerun.')
                 sys.exit(1)
-
-    # def parse_helper(self, url):
-    #     with open(self.dump_file, 'r', encoding='utf-8') as html_dump:
-    #         html = html_dump.read()
-    #     pfx = 'http://www.lolesports.com'
-    #     soup = BeautifulSoup(html, 'html.parser')
-    #     links = [link for link in soup.find_all('a')]
-    #
-    #     for link in links:
-    #         h = link.get('href') if link.get('href') else ''
-    #         if re.search('matches/|schedule/|stats/', h):
-    #             if (pfx + h) not in self.seen_urls and (pfx + h) not in self.url_q:
-    #                 print('Enqueueing schedule page: {0}'.format(h))
-    #                 self.url_q.append(pfx + h)
-    #         elif 'match-details' in h:
-    #             print('Found match details for {0}'.format(url))
-    #             self.retrieve_match(h, url, soup)
-    #         elif 'stats/' in url  and 'teams/' in h:
-    #             team_id = link.get_text()
-    #             if team_id not in self.team_ids:
-    #                 self.team_ids.append(team_id)
-    #                 print('Found team {0}'.format(team_id))
-    #                 self.retrieve_team(pfx + h, team_id)
-    #
-    #     if len(self.url_q) > 0:
-    #         self.parse(self.url_q.pop(0))
-    #     else:
-    #         print('Created {0} SQL inserts'.format(len(self.sql_statements)))
-    #         print('They are available in {0}'.format(self.data_file))
-    #         with open(self.data_file, 'w', encoding='utf-8') as df:
-    #             json.dump(self.sql_statements, df)
-    #         sys.exit(0)
 
 
     def sql_insert(self, table, args):
@@ -139,92 +112,117 @@ class TournamentParser:
         insert_string += str(args[-1]) + ')\n'
         self.sql_statements.append(insert_string)
 
+    def gen_id(self, s): # this fcking project I swear to god
+        m = md5()
+        m.update(s.encode('utf-8'))
+        out = m.hexdigest()
+        out = out[0:10]  # md5 hashes are really long and the first 10 digits will probably be unique
+        out = '0x{}'.format(out)
+        out = int(out, 16)
+
+        return out
 
     def retrieve_tournament(self, url, name, location):
-        self.tournament_id = starter_url.split('/')[5] # Better hope this never changes
+        webbrowser.open('https://youtu.be/5W_wd9Qf0IE?t=2s', new=2)
+        self.tournament_id = starter_url.split('/')[5]  # Better hope this never changes
         t_year = re.match('[1-3][0-9]{3}', self.tournament_id)
         t_name = name
         t_loc = location
 
-        # self.sql_statements.append("INSERT INTO tournaments VALUES({0}, {1}, {2}, {3})\n".format(
-        #     self.tournament_id, t_year, t_name, t_loc
-        # ))
         self.sql_insert('tournaments', [self.tournament_id, t_year, t_name, t_loc])
         self.parse(url)
 
-
-    def retrieve_team(self, url, id):
+    def retrieve_team(self, url, team_id):
+        print('Retrieving team at {0}'.format(url))
         self.render(url)
         with open(self.dump_file, 'r', encoding='utf-8') as html_dump:
             html = html_dump.read()
-        soup = BeautifulSoup(html)
+        soup = BeautifulSoup(html, 'html.parser')
 
-        team_info = soup.find('div', {'class' : 'team-bio'})
-        region = [r for r in self.REGIONS if team_info.find_all(r)]
-
-        if len(region) > 1:
-            raise NameError('Multiple regions found for team')
-        elif len(region) == 0:
-            if team_info.find_all('Brazil'):
-                region = 'CBLoL'
-            elif team_info.find_all(re.compile('KeSPA|Champions Spring|Champions Summer')):
-                region = 'LCK'
-            elif team_info.find_all(re.compile('Turkey|Turkish')):
-                region = 'TCL'
-            elif team_info.find_all(re.compile('IWC|International Wild Card')):
-                region = 'IWC'
+        # Can't do region sometimes because team bio doesn't exist or won't load
+        region = 'UNKNOWN'
+        team_info = soup.find('div', class_='team-bio')
+        if team_info:
+            region = [r for r in self.REGIONS if team_info.find_all(r)]
+            if len(region) > 1:
+                raise NameError('Multiple regions found for team')
+            elif len(region) == 0:
+                if team_info.find_all('Brazil'):
+                    region = 'CBLoL'
+                elif team_info.find_all(re.compile('KeSPA|Champions Spring|Champions Summer')):
+                    region = 'LCK'
+                elif team_info.find_all(re.compile('Turkey|Turkish')):
+                    region = 'TCL'
+                elif team_info.find_all(re.compile('IWC|International Wild Card')):
+                    region = 'IWC'
+                else:
+                    region = 'UNKNOWN'
             else:
-                region = 'NULL'
-        else:
-            region = region[0]
+                region = region[0]
 
-        team_name = soup.find('span', {'class' : 'team-name'}).get_text()
-        self.sql_insert('teams', [id, region, team_name])
-        self.sql_insert('participates', [self.tournament_id, id, 'UNKNOWN'])
-        players = soup.find_all('div', {'class': 'player-row'})
-        for player in players:
-            player_name = player.find('SUMMONER').next_sibling
+        team_name = soup.find('span', class_='team-name').get_text()
+        self.sql_insert('teams', [team_id, region, team_name])
+        self.sql_insert('participates', [self.tournament_id, team_id, 'UNKNOWN'])
+        players = []
+        for link in soup.find_all('a'):
+            href = link.get('href')
+            if href and 'players/' in href:
+                players.append(href.split('/')[-1])
+        print('found {0} players'.format(len(players)))
+        for player_name in players:
             if player_name not in self.player_names:
                 self.player_names.append(player_name)
                 print('Found player {0}'.format(player_name))
                 self.sql_insert('players', [player_name])
-                self.sql_insert('registers', [player_name, id, "date('1970-01-01')"])
+                self.sql_insert('registers', [player_name, team_id, "date('1970-01-01')"])
 
-    def retrieve_series(self, soup, url):
-        series_id = ord(self.tournament_id) + ord(url.split('/')[-1])  # convert the unique bit of the url to an integer
-        bo_count = soup.find('span', class_='game-num').get_text()
-        bo_count = bo_count.split('of ')[1]
-
+    def retrieve_series(self, url, series_id, soup):
         if series_id not in self.series_ids:
+            bo_count = soup.select_one('span.game-num')
+            if bo_count:
+                bo_count = bo_count.get_text()
+            else:
+                bo_count = 1
+            t1_box = soup.select_one('div.blue')
+            t1_link = self.PFX + t1_box.select_one('a.ember-view').get('href')
+            t1_id = t1_box.select_one('div.team-name.hide-for-medium-up').get_text()
+            t2_box = soup.select_one('div.red')
+            t2_link = self.PFX + t2_box.select_one('a.ember-view').get('href')
+            t2_id = t2_box.select_one('div.team-name.hide-for-medium-up').get_text()
+
+            if t1_id not in self.team_ids:
+                self.team_ids.append(t1_id)
+                self.retrieve_team(t1_link, t1_id)
+            if t2_id not in self.team_ids:
+                self.team_ids.append(t2_id)
+                self.retrieve_team(t2_link, t2_id)
+
+            stats_links = soup.find_all('a', class_='stats-link')
+
+            for i in range(0, len(stats_links)):
+                print('Found match details for ' + url.split('/')[-1])
+                self.retrieve_match(stats_links[i].get('href'), i+1, url, soup, series_id, t1_id, t2_id)
+
             self.series_ids.append(series_id)
             self.sql_insert('series', [series_id, bo_count])
             self.sql_insert('organizes', [self.tournament_id, series_id])
 
-    def retrieve_match(self, match_path, parent_url, soup):
+    def retrieve_match(self, match_path, match_number, parent_url, soup, series_id, t1_id, t2_id):
+
+        self.matches.append(parent_url.split('matches/')[1])
+
         def pid_to_sname(json_object, pid):
             return json_object['participantIdentities'][pid - 1]['player']['summonerName']
 
-        t1_box = soup.select('div.large-7.large-pull-5.small-12.columns.blue-team.ungutter')
-        print('t1_box is ' + str(t1_box))
-        team1Id = t1_box[3].get_text()
-        t2_box = soup.select('div.large-7.large-pull-5.small-12.columns.red-team.ungutter')
-        team2Id = t2_box[3].get_text()
+        match_date = soup.select_one('div.match-date').contents[2].strip(' ')
+        match_date = datetime.datetime.strptime(match_date, '– %b %d, %Y\n').strftime('%Y-%m-%d')
 
+        self.sql_insert('matches', [series_id, match_number, match_date])
+        self.sql_insert('competes', [series_id, t1_id, True])
+        self.sql_insert('competes', [series_id, t2_id, False])
 
-        match_number = soup.select('span.game-num').get_text()
-        match_number = match_number.split(' ')[1]
-
-        match_date = soup.select('div.match-date').contents[2]
-        match_date = datetime.datetime.strptime(match_date, '%b %-d, %Y').strftime('%Y-%m-%d')
-
-        series_Id = ord(self.tournament_id) + ord(parent_url.split('/')[-1])
-
-        self.sql_insert('matches', [series_Id, match_number, match_date])
-        self.sql_insert('competes', [series_Id, team1Id, True])
-        self.sql_insert('competes', [series_Id, team2Id, False])
-
+        match_path = match_path.split('details/')[1]
         match_url = 'https://acs.leagueoflegends.com/v1/stats/game/' + match_path
-
         raw_data = request.urlopen(match_url).read()
         raw_data = raw_data.decode('utf-8')
         json_data = json.loads(raw_data)
@@ -239,7 +237,7 @@ class TournamentParser:
         t1_data = json_data['teams'][0]
         t1_inhibitors = t1_data['inhibitorKills']
         t1_towers = t1_data['towerKills']
-        t1_riftHeralds = t1_data['riftHeraldKills']
+        t1_riftheralds = t1_data['riftHeraldKills']
         t1_barons = t1_data['baronKills']
         t1_dragons = t1_data['dragonKills']
         t1_nexus = 1 if (t1_data['win'] == 'Win') else 0
@@ -247,22 +245,21 @@ class TournamentParser:
         t2_data = json_data['teams'][1]
         t2_inhibitors = t2_data['inhibitorKills']
         t2_towers = t2_data['towerKills']
-        t2_riftHeralds = t2_data['riftHeraldKills']
+        t2_riftheralds = t2_data['riftHeraldKills']
         t2_barons = t2_data['baronKills']
         t2_dragons = t2_data['dragonKills']
         t2_nexus = 1 if (t2_data['win'] == 'Win') else 0
 
-        self.sql_insert('scores', [team1Id, series_Id, match_number, t1_inhibitors, t1_towers, t1_riftHeralds,
-                        t1_barons, t1_dragons, t1_nexus])
-        self.sql_insert('scores', [team2Id, series_Id, match_number, t2_inhibitors, t2_towers, t2_riftHeralds,
+        self.sql_insert('scores', [t1_id, series_id, match_number, t1_inhibitors, t1_towers, t1_riftheralds,
+                                   t1_barons, t1_dragons, t1_nexus])
+        self.sql_insert('scores', [t2_id, series_id, match_number, t2_inhibitors, t2_towers, t2_riftheralds,
                                    t2_barons, t2_dragons, t2_nexus])
         # BANS
         for ban in t1_data['bans']:
-            self.sql_insert('bans', [series_Id, match_number, ban['championID'], ban['pickTurn']])
+            self.sql_insert('bans', [series_id, match_number, ban['championId'], ban['pickTurn']])
 
         for ban in t2_data['bans']:
-            self.sql_insert('bans', [series_Id, match_number, ban['championID'], ban['pickTurn']])
-
+            self.sql_insert('bans', [series_id, match_number, ban['championId'], ban['pickTurn']])
 
         # PLAYS (players are listed by summonerName only)
         for p in json_data['participants']:
@@ -283,32 +280,30 @@ class TournamentParser:
                 p_role = "Support"
 
             pstats = p['stats']
-            self.sql_insert('plays', [series_Id, match_number, p_name, p['championID'], p_role,
+            self.sql_insert('plays', [series_id, match_number, p_name, p['championId'], p_role,
                                                             pstats['kills'], pstats['deaths'], pstats['assists'],
                                                             pstats['totalDamageDealtToChampions'],
                                                             pstats['wardsPlaced'],
-                                                            pstats['wardsDestroyed'], pstats['totalMinionsKilled'],
+                                                            pstats['wardsKilled'], pstats['totalMinionsKilled'],
                                                             pstats['neutralMinionsKilledTeamJungle'],
                                                             pstats['neutralMinionsKilledEnemyJungle'],
                                                             pstats['goldEarned']])
 
             # INTERACTS
+
             for frame in json_timeline['frames']:
                 for e in frame['events']:
                     is_buy = 1 if e['type'] == 'ITEM_PURCHASED' else 0
-                    self.sql_insert('interacts', [series_Id, match_number,
-                                                                 pid_to_sname(json_data, e['participantId']),
-                                                                 e['itemId'], e['timeStamp'], is_buy])
-
-        return self.sql_statements
-
-
+                    if e['type'] == 'ITEM_PURCHASED' or e['type'] == 'ITEM_SOLD':
+                        self.sql_insert('interacts', [series_id, match_number,
+                                                                     pid_to_sname(json_data, e['participantId']),
+                                                                     e['itemId'], e['timestamp'], is_buy])
 
 if __name__ == '__main__':
     starter_url = sys.argv[1]
     tournament_name = sys.argv[2]
     location = sys.argv[3]
-    if len(sys.argv) > 4 :
+    if len(sys.argv) > 4:
         dump_file = sys.argv[2]
     else:
         dump_file = 'html_dump.html'
