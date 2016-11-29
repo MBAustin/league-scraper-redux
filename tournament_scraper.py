@@ -119,7 +119,7 @@ class TournamentParser:
             insert_string += '\'{0}\')\n'.format(str(args[-1]))
         self.sql_statements.append(insert_string)
 
-    def gen_id(self, s): # this fcking project I swear to god
+    def gen_id(self, s):
         m = md5()
         m.update(s.encode('utf-8'))
         out = m.hexdigest()
@@ -271,9 +271,7 @@ class TournamentParser:
                 else:
                     raise ValueError('Could not identify player team')
 
-
             p_role = self.ROLES[i%5]
-
             p_stats = p['stats']
             self.sql_insert('plays', [series_id, match_number, p_name, p['championId'], p_role,
                                                             p_stats['kills'], p_stats['deaths'], p_stats['assists'],
