@@ -68,6 +68,7 @@ class TournamentParser:
 
         q_len = len(self.url_q)
         if q_len > 0:
+            # Grammar Nazi's wet dream
             is_are = 'is' if q_len is 1 else 'are'
             item_s = 'item' if q_len is 1 else 'items'
             print('There {0} {1} {2} left in the queue.'.format(is_are, q_len, item_s))
@@ -123,9 +124,9 @@ class TournamentParser:
                 else:
                     insert_string += '\'{0}\', '.format(str(arg))
         if type(args[-1]) is int or (type(args[-1]) is not int and 'date(' in args[-1]):
-            insert_string += '{0})\n'.format(str(args[-1]))
+            insert_string += '{0});\n'.format(str(args[-1]))
         else:
-            insert_string += '\'{0}\')\n'.format(str(args[-1]))
+            insert_string += '\'{0}\');\n'.format(str(args[-1]))
         self.sql_statements.append(insert_string)
 
     def gen_id(self, s):
@@ -189,6 +190,8 @@ class TournamentParser:
                 bo_count = bo_count.get_text().strip().split(' ')[-1]
             else:
                 bo_count = 1
+            stage = url.split('/')[-1]
+
             t1_box = soup.select_one('div.blue')
             t1_link = self.PFX + t1_box.select_one('a.ember-view').get('href')
             t1_id = t1_box.select_one('div.team-name.hide-for-medium-up').get_text()
@@ -207,7 +210,7 @@ class TournamentParser:
 
             self.series_ids.append(series_id)
             self.sql_insert('series', [series_id, bo_count])
-            self.sql_insert('organizes', [self.tournament_id, series_id])
+            self.sql_insert('organizes', [self.tournament_id, series_id, stage])
 
             for i in range(0, len(stats_links)):
                 print('Found match details for ' + url.split('/')[-1])
@@ -275,11 +278,11 @@ class TournamentParser:
             if p_name not in self.player_names:
                 self.player_names.append(p_name)
                 print('Found player {0}'.format(p_name))
-                self.sql_insert('players', [p_name])
+                self.sql_insert('players', [p_name, "date('1970-01-01')"])
                 if p['teamId'] == 100:
-                    self.sql_insert('registers', [p_name, t1_id, "date('1970-01-01')"])
+                    self.sql_insert('registers', [p_name, t1_id, "date('1970-01-01')", 'NULL'])
                 elif p['teamId'] == 200:
-                    self.sql_insert('registers', [p_name, t2_id, "date('1970-01-01')"])
+                    self.sql_insert('registers', [p_name, t2_id, "date('1970-01-01')", 'NULL'])
                 else:
                     raise ValueError('Could not identify player team')
 
