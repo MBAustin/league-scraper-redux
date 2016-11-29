@@ -52,7 +52,11 @@ class TournamentParser:
 
         if 'matches/' in url:
             series_id = self.gen_id(self.tournament_id + url.split('/')[-1])
-            self.retrieve_series(url, series_id, soup)
+            try:
+                self.retrieve_series(url, series_id, soup)
+            except AttributeError:
+                self.seen_urls.remove(url)
+                self.parse(url)
         else:
             for link in soup.find_all('a'):
                 h = link.get('href') if link.get('href') else ''
@@ -165,10 +169,12 @@ class TournamentParser:
                     region = 'UNKNOWN'
             else:
                 region = region[0]
-
-        team_name = soup.find('span', class_='team-name').get_text().strip()
-        self.sql_insert('teams', [team_id, region, team_name])
-        self.sql_insert('participates', [self.tournament_id, team_id, 'UNKNOWN'])
+        try:
+            team_name = soup.find('span', class_='team-name').get_text().strip()
+            self.sql_insert('teams', [team_id, region, team_name])
+            self.sql_insert('participates', [self.tournament_id, team_id, 'UNKNOWN'])
+        except AttributeError:
+            self.retrieve_team(url, team_id)
 
     def retrieve_series(self, url, series_id, soup):
         if series_id not in self.series_ids:
@@ -195,6 +201,7 @@ class TournamentParser:
 
             for i in range(0, len(stats_links)):
                 print('Found match details for ' + url.split('/')[-1])
+                print('There are {0} items left in the queue'.format(len(self.url_q)))
                 self.retrieve_match(stats_links[i].get('href'), i+1, url, soup, series_id, t1_id, t2_id)
 
             self.series_ids.append(series_id)
@@ -297,23 +304,23 @@ if __name__ == '__main__':
     tournament_name = sys.argv[2]
     location = sys.argv[3]
     if len(sys.argv) > 4:
-        dump_file = sys.argv[2]
-    else:
-        dump_file = 'html_dump.html'
-    if len(sys.argv) > 3:
-        url_queue_file = sys.argv[3]
-    else:
-        url_queue_file = 'url_queue.json'
-    if len(sys.argv) > 4:
-        seen_url_file = sys.argv[4]
-    else:
-        seen_url_file = 'seen_urls.json'
-    if len(sys.argv) > 5:
-        data_file = sys.argv[5]
+        data_file = sys.argv[4]
     else:
         data_file = 'tournament_data.sql'
+    if len(sys.argv) > 5:
+        url_queue_file = sys.argv[5]
+    else:
+        url_queue_file = 'url_queue.json'
     if len(sys.argv) > 6:
-        do_load = sys.argv[6]
+        seen_url_file = sys.argv[6]
+    else:
+        seen_url_file = 'seen_urls.json'
+    if len(sys.argv) > 7:
+        dump_file = sys.argv[7]
+    else:
+        dump_file = 'html_dump.html'
+    if len(sys.argv) > 8:
+        do_load = sys.argv[8]
     else:
         do_load = False
 
