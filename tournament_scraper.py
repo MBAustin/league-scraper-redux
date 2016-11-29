@@ -55,6 +55,7 @@ class TournamentParser:
             try:
                 self.retrieve_series(url, series_id, soup)
             except AttributeError:
+                print('Render failed, trying again...')
                 self.seen_urls.remove(url)
                 self.parse(url)
         else:
@@ -153,7 +154,7 @@ class TournamentParser:
         region = 'UNKNOWN'
         team_info = soup.find('div', class_='team-bio')
         if team_info:
-            region = [r for r in self.REGIONS if team_info.find_all(r)]
+            region = [r for r in self.REGIONS if team_info.find_all(text=r)]
             if len(region) > 1:
                 raise NameError('Multiple regions found for team')
             elif len(region) == 0:
@@ -174,6 +175,7 @@ class TournamentParser:
             self.sql_insert('teams', [team_id, region, team_name])
             self.sql_insert('participates', [self.tournament_id, team_id, 'UNKNOWN'])
         except AttributeError:
+            print('Render failed, trying again...')
             self.retrieve_team(url, team_id)
 
     def retrieve_series(self, url, series_id, soup):
@@ -199,14 +201,14 @@ class TournamentParser:
 
             stats_links = soup.find_all('a', class_='stats-link')
 
+            self.series_ids.append(series_id)
+            self.sql_insert('series', [series_id, bo_count])
+            self.sql_insert('organizes', [self.tournament_id, series_id])
+
             for i in range(0, len(stats_links)):
                 print('Found match details for ' + url.split('/')[-1])
                 print('There are {0} items left in the queue'.format(len(self.url_q)))
                 self.retrieve_match(stats_links[i].get('href'), i+1, url, soup, series_id, t1_id, t2_id)
-
-            self.series_ids.append(series_id)
-            self.sql_insert('series', [series_id, bo_count])
-            self.sql_insert('organizes', [self.tournament_id, series_id])
 
     def retrieve_match(self, match_path, match_number, parent_url, soup, series_id, t1_id, t2_id):
 
