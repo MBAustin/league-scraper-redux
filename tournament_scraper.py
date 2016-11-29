@@ -66,7 +66,11 @@ class TournamentParser:
                         print('Enqueueing page: {0}'.format(h))
                         self.url_q.append(self.PFX + h)
 
-        if len(self.url_q) > 0:
+        q_len = len(self.url_q)
+        if q_len > 0:
+            is_are = 'is' if q_len is 1 else 'are'
+            item_s = 'item' if q_len is 1 else 'items'
+            print('There {0} {1} {2} left in the queue.'.format(is_are, q_len, item_s))
             self.parse(self.url_q.pop(0))
         else:
             print('Found these {0} teams: '.format((len(self.team_ids))))
@@ -207,7 +211,6 @@ class TournamentParser:
 
             for i in range(0, len(stats_links)):
                 print('Found match details for ' + url.split('/')[-1])
-                print('There are {0} items left in the queue'.format(len(self.url_q)))
                 self.retrieve_match(stats_links[i].get('href'), i+1, url, soup, series_id, t1_id, t2_id)
 
     def retrieve_match(self, match_path, match_number, parent_url, soup, series_id, t1_id, t2_id):
