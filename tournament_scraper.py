@@ -25,10 +25,10 @@ class TournamentParser:
         self.series_ids = []
         self.matches = []
 
-
         self.sql_statements = []
 
         self.REGIONS = ['NA', 'EU', 'LCK', 'LPL', 'LMS', 'GPL', 'CBLoL', 'LJL', 'TCL', 'LCL', 'OPL', 'CIS']
+        self.ROLES = ['Top', 'Jungle', 'Mid', 'ADC', 'Support']
         self.PFX = 'http://www.lolesports.com'
 
     def parse(self, url):
@@ -77,6 +77,7 @@ class TournamentParser:
             print('They are available in {0}'.format(self.data_file))
             with open(self.data_file, 'w', encoding='utf-8') as df:
                 df.writelines(self.sql_statements)
+            webbrowser.open('https://youtu.be/5W_wd9Qf0IE?t=2s', new=2)
             sys.exit(0)
 
     def render(self, url):
@@ -106,10 +107,16 @@ class TournamentParser:
 
     def sql_insert(self, table, args):
         insert_string = "INSERT INTO {0} VALUES(".format(table)
-        if len(args) > 2:
+        if len(args) > 1:
             for arg in args[0:len(args) - 1]:
-                insert_string += str(arg) + ', '
-        insert_string += str(args[-1]) + ')\n'
+                if type(arg) is int or (type(arg) is not int and 'date(' in arg):
+                    insert_string += '{0}, '.format(str(arg))
+                else:
+                    insert_string += '\'{0}\', '.format(str(arg))
+        if type(args[-1]) is int or (type(args[-1]) is not int and 'date(' in args[-1]):
+            insert_string += '{0})\n'.format(str(args[-1]))
+        else:
+            insert_string += '\'{0}\')\n'.format(str(args[-1]))
         self.sql_statements.append(insert_string)
 
     def gen_id(self, s): # this fcking project I swear to god
@@ -119,13 +126,12 @@ class TournamentParser:
         out = out[0:10]  # md5 hashes are really long and the first 10 digits will probably be unique
         out = '0x{}'.format(out)
         out = int(out, 16)
-
         return out
 
     def retrieve_tournament(self, url, name, location):
-        webbrowser.open('https://youtu.be/5W_wd9Qf0IE?t=2s', new=2)
         self.tournament_id = starter_url.split('/')[5]  # Better hope this never changes
-        t_year = re.match('[1-3][0-9]{3}', self.tournament_id)
+        t_year = re.search('[1-3][0-9]{3}', self.tournament_id).group(0)
+        print('Retrieving tournament with ID {0} from {1}'.format(self.tournament_id, t_year))
         t_name = name
         t_loc = location
 
@@ -160,15 +166,15 @@ class TournamentParser:
             else:
                 region = region[0]
 
-        team_name = soup.find('span', class_='team-name').get_text()
+        team_name = soup.find('span', class_='team-name').get_text().strip()
         self.sql_insert('teams', [team_id, region, team_name])
         self.sql_insert('participates', [self.tournament_id, team_id, 'UNKNOWN'])
-        
+
     def retrieve_series(self, url, series_id, soup):
         if series_id not in self.series_ids:
             bo_count = soup.select_one('span.game-num')
             if bo_count:
-                bo_count = bo_count.get_text()
+                bo_count = bo_count.get_text().strip().split(' ')[-1]
             else:
                 bo_count = 1
             t1_box = soup.select_one('div.blue')
@@ -206,8 +212,8 @@ class TournamentParser:
         match_date = datetime.datetime.strptime(match_date, '– %b %d, %Y\n').strftime('%Y-%m-%d')
 
         self.sql_insert('matches', [series_id, match_number, match_date])
-        self.sql_insert('competes', [series_id, t1_id, True])
-        self.sql_insert('competes', [series_id, t2_id, False])
+        self.sql_insert('competes', [series_id, t1_id, 1])
+        self.sql_insert('competes', [series_id, t2_id, 0])
 
         match_path = match_path.split('details/')[1]
         match_url = 'https://acs.leagueoflegends.com/v1/stats/game/' + match_path
@@ -250,7 +256,8 @@ class TournamentParser:
             self.sql_insert('bans', [series_id, match_number, ban['championId'], ban['pickTurn']])
 
         # PLAYS (players are listed by summonerName only)
-        for p in json_data['participants']:
+        for i in range(0, len(json_data['participants'])):
+            p = json_data['participants'][i]
             p_name = pid_to_sname(json_data, p['participantId'])
             p_name = p_name.split(' ', 1)[1] # Get rid of TeamID
             if p_name not in self.player_names:
@@ -264,29 +271,18 @@ class TournamentParser:
                 else:
                     raise ValueError('Could not identify player team')
 
-            role = p['timeline']['role']
-            lane = p['timeline']['lane']
-            p_role = "NONE"
-            if lane == 'TOP':
-                p_role = "Top"
-            elif lane == 'MIDDLE':
-                p_role = "Mid"
-            elif lane == 'JUNGLE':
-                p_role = "Jungle"
-            elif role == 'DUO_CARRY':
-                p_role = "ADC"
-            elif role == 'DUO_SUPPORT':
-                p_role = "Support"
 
-            pstats = p['stats']
+            p_role = self.ROLES[i%5]
+
+            p_stats = p['stats']
             self.sql_insert('plays', [series_id, match_number, p_name, p['championId'], p_role,
-                                                            pstats['kills'], pstats['deaths'], pstats['assists'],
-                                                            pstats['totalDamageDealtToChampions'],
-                                                            pstats['wardsPlaced'],
-                                                            pstats['wardsKilled'], pstats['totalMinionsKilled'],
-                                                            pstats['neutralMinionsKilledTeamJungle'],
-                                                            pstats['neutralMinionsKilledEnemyJungle'],
-                                                            pstats['goldEarned']])
+                                                            p_stats['kills'], p_stats['deaths'], p_stats['assists'],
+                                                            p_stats['totalDamageDealtToChampions'],
+                                                            p_stats['wardsPlaced'],
+                                                            p_stats['wardsKilled'], p_stats['totalMinionsKilled'],
+                                                            p_stats['neutralMinionsKilledTeamJungle'],
+                                                            p_stats['neutralMinionsKilledEnemyJungle'],
+                                                            p_stats['goldEarned']])
 
         # INTERACTS
 
