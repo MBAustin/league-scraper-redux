@@ -23,18 +23,17 @@ class Render(QWebPage):
         self.mainFrame().load(QUrl(url))
         self.app.exec_()
 
-    def _loadFinished(self, result):
+    def _loadFinished(self):
         frame = self.mainFrame()
         url = str(frame.url().toString())
-
         html = frame.toHtml()
-        self.cb(url, html)
+        self.cb(html)
         with open(self.html_dump, 'w', encoding='utf-8') as dump:
             dump.write(html)
         self.app.quit()
 
 
-def callback(url, html):  # no idea if this function is even necessary but if it ain't broke...
+def callback(html):  # no idea if this function is even necessary, but if it ain't broke...
     print('Got {0} bytes of HTML'.format(len(html)))
 
 if __name__ == "__main__":
@@ -42,4 +41,3 @@ if __name__ == "__main__":
     the_dump_file = sys.argv[2]
     r = Render(callback, the_dump_file)
     r.crawl(the_url)
-

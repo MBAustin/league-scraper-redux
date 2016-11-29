@@ -11,6 +11,7 @@ from hashlib import md5
 
 class TournamentParser:
     def __init__(self, dump_file, queue_file, seen_file, data_file, do_load):
+        self.tournament_id = None
         self.do_load = do_load
         self.dump_file = dump_file
         self.queue_file = queue_file
@@ -114,7 +115,6 @@ class TournamentParser:
                       'end of command line arguments and rerun.')
                 sys.exit(1)
 
-
     def sql_insert(self, table, args):
         insert_string = "INSERT INTO {0} VALUES(".format(table)
         if len(args) > 1:
@@ -129,7 +129,8 @@ class TournamentParser:
             insert_string += '\'{0}\');\n'.format(str(args[-1]))
         self.sql_statements.append(insert_string)
 
-    def gen_id(self, s):
+    @staticmethod
+    def gen_id(s):
         m = md5()
         m.update(s.encode('utf-8'))
         out = m.hexdigest()
@@ -139,7 +140,7 @@ class TournamentParser:
         return out
 
     def retrieve_tournament(self, url, name, location):
-        self.tournament_id = starter_url.split('/')[5]  # Better hope this never changes
+        self.tournament_id = the_starter_url.split('/')[5]  # Better hope this never changes
         t_year = re.search('[1-3][0-9]{3}', self.tournament_id).group(0)
         print('Retrieving tournament with ID {0} from {1}'.format(self.tournament_id, t_year))
         t_name = name
@@ -211,6 +212,8 @@ class TournamentParser:
             self.series_ids.append(series_id)
             self.sql_insert('series', [series_id, bo_count])
             self.sql_insert('organizes', [self.tournament_id, series_id, stage])
+            self.sql_insert('competes', [series_id, t1_id, 1])
+            self.sql_insert('competes', [series_id, t2_id, 0])
 
             for i in range(0, len(stats_links)):
                 print('Found match details for ' + url.split('/')[-1])
@@ -227,8 +230,6 @@ class TournamentParser:
         match_date = datetime.datetime.strptime(match_date, '– %b %d, %Y\n').strftime('%Y-%m-%d')
 
         self.sql_insert('matches', [series_id, match_number, match_date])
-        self.sql_insert('competes', [series_id, t1_id, 1])
-        self.sql_insert('competes', [series_id, t2_id, 0])
 
         match_path = match_path.split('details/')[1]
         match_url = 'https://acs.leagueoflegends.com/v1/stats/game/' + match_path
@@ -274,7 +275,7 @@ class TournamentParser:
         for i in range(0, len(json_data['participants'])):
             p = json_data['participants'][i]
             p_name = pid_to_sname(json_data, p['participantId'])
-            p_name = p_name.split(' ', 1)[1] # Get rid of TeamID
+            p_name = p_name.split(' ', 1)[1]  # Get rid of TeamID
             if p_name not in self.player_names:
                 self.player_names.append(p_name)
                 print('Found player {0}'.format(p_name))
@@ -286,16 +287,13 @@ class TournamentParser:
                 else:
                     raise ValueError('Could not identify player team')
 
-            p_role = self.ROLES[i%5]
+            p_role = self.ROLES[i % 5]
             p_stats = p['stats']
-            self.sql_insert('plays', [series_id, match_number, p_name, p['championId'], p_role,
-                                                            p_stats['kills'], p_stats['deaths'], p_stats['assists'],
-                                                            p_stats['totalDamageDealtToChampions'],
-                                                            p_stats['wardsPlaced'],
-                                                            p_stats['wardsKilled'], p_stats['totalMinionsKilled'],
-                                                            p_stats['neutralMinionsKilledTeamJungle'],
-                                                            p_stats['neutralMinionsKilledEnemyJungle'],
-                                                            p_stats['goldEarned']])
+            self.sql_insert('plays', [series_id, match_number, p_name, p['championId'], p_role, p_stats['kills'],
+                                      p_stats['deaths'], p_stats['assists'], p_stats['totalDamageDealtToChampions'],
+                                      p_stats['wardsPlaced'], p_stats['wardsKilled'], p_stats['totalMinionsKilled'],
+                                      p_stats['neutralMinionsKilledTeamJungle'],
+                                      p_stats['neutralMinionsKilledEnemyJungle'], p_stats['goldEarned']])
 
         # INTERACTS
 
@@ -303,34 +301,33 @@ class TournamentParser:
             for e in frame['events']:
                 is_buy = 1 if e['type'] == 'ITEM_PURCHASED' else 0
                 if e['type'] == 'ITEM_PURCHASED' or e['type'] == 'ITEM_SOLD':
-                    self.sql_insert('interacts', [series_id, match_number,
-                                                                 pid_to_sname(json_data, e['participantId']).split(' ',1)[1],
-                                                                 e['itemId'], e['timestamp'], is_buy])
+                    self.sql_insert('interacts', [series_id, match_number, pid_to_sname(
+                        json_data, e['participantId']).split(' ', 1)[1], e['itemId'], e['timestamp'], is_buy])
 
 if __name__ == '__main__':
-    starter_url = sys.argv[1]
-    tournament_name = sys.argv[2]
-    location = sys.argv[3]
+    the_starter_url = sys.argv[1]
+    the_tournament_name = sys.argv[2]
+    the_location = sys.argv[3]
     if len(sys.argv) > 4:
-        data_file = sys.argv[4]
+        the_data_file = sys.argv[4]
     else:
-        data_file = 'tournament_data.sql'
+        the_data_file = 'tournament_data.sql'
     if len(sys.argv) > 5:
-        url_queue_file = sys.argv[5]
+        the_url_q_file = sys.argv[5]
     else:
-        url_queue_file = 'url_queue.json'
+        the_url_q_file = 'url_queue.json'
     if len(sys.argv) > 6:
-        seen_url_file = sys.argv[6]
+        the_seen_url_file = sys.argv[6]
     else:
-        seen_url_file = 'seen_urls.json'
+        the_seen_url_file = 'seen_urls.json'
     if len(sys.argv) > 7:
-        dump_file = sys.argv[7]
+        the_dump_file = sys.argv[7]
     else:
-        dump_file = 'html_dump.html'
+        the_dump_file = 'html_dump.html'
     if len(sys.argv) > 8:
-        do_load = sys.argv[8]
+        load_it = sys.argv[8]
     else:
-        do_load = False
+        load_it = False
 
-    parser = TournamentParser(dump_file, url_queue_file, seen_url_file, data_file, do_load)
-    parser.retrieve_tournament(starter_url, tournament_name, location)
+    parser = TournamentParser(the_dump_file, the_url_q_file, the_seen_url_file, the_data_file, load_it)
+    parser.retrieve_tournament(the_starter_url, the_tournament_name, the_location)
