@@ -29,7 +29,7 @@ class TournamentParser:
         self.sql_statements = []
 
         self.REGIONS = ['NA', 'EU', 'LCK', 'LPL', 'LMS', 'GPL', 'CBLoL', 'LJL', 'TCL', 'LCL', 'OPL', 'CIS']
-        self.ROLES = ['Top', 'Jungle', 'Mid', 'ADC', 'Support']
+        self.ROLES = ['top', 'jungle', 'mid', 'adc', 'support']
         self.PFX = 'http://www.lolesports.com'
 
     def parse(self, url):
@@ -156,19 +156,19 @@ class TournamentParser:
             html = html_dump.read()
         soup = BeautifulSoup(html, 'html.parser')
 
-        team_info = soup.select_one('div.team-bio')
+        team_info = str(soup.select_one('div.team-bio'))
         if team_info:
-            region = [r for r in self.REGIONS if r in str(team_info)]
+            region = [r for r in self.REGIONS if r in team_info]
             if len(region) > 1:
                 raise NameError('Multiple regions found for team')
             elif len(region) == 0:
-                if team_info.find_all('Brazil'):
+                if 'Brazil' in team_info:
                     region = 'CBLoL'
-                elif team_info.find_all(re.compile('KeSPA|Champions Spring|Champions Summer')):
+                elif 'KeSPA' in team_info or 'Champions Spring' in team_info or 'Champions Summer' in team_info:
                     region = 'LCK'
-                elif team_info.find_all(re.compile('Turkey|Turkish')):
+                elif 'Turk' in team_info:
                     region = 'TCL'
-                elif team_info.find_all(re.compile('IWC|International Wild Card')):
+                elif 'IWC' in team_info or 'International Wild Card' in team_info:
                     region = 'IWC'
                 else:
                     print('Found no known region for {0}'.format(team_id))
