@@ -194,7 +194,7 @@ class TournamentParser:
                 bo_count = bo_count.get_text().strip().split(' ')[-1]
             else:
                 bo_count = 1
-            stage = url.split('/')[-1]
+            stage = url.split('/')[-2] + ' - ' + url.split('/')[-1]
 
             t1_box = soup.select_one('div.blue')
             t1_link = self.PFX + t1_box.select_one('a.ember-view').get('href')
