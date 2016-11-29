@@ -76,7 +76,7 @@ class TournamentParser:
             print('\nCreated {0} SQL inserts'.format(len(self.sql_statements)))
             print('They are available in {0}'.format(self.data_file))
             with open(self.data_file, 'w', encoding='utf-8') as df:
-                json.dump(self.sql_statements, df)
+                df.writelines(self.sql_statements)
             sys.exit(0)
 
     def render(self, url):
@@ -163,19 +163,7 @@ class TournamentParser:
         team_name = soup.find('span', class_='team-name').get_text()
         self.sql_insert('teams', [team_id, region, team_name])
         self.sql_insert('participates', [self.tournament_id, team_id, 'UNKNOWN'])
-        players = []
-        for link in soup.find_all('a'):
-            href = link.get('href')
-            if href and 'players/' in href:
-                players.append(href.split('/')[-1])
-        print('found {0} players'.format(len(players)))
-        for player_name in players:
-            if player_name not in self.player_names:
-                self.player_names.append(player_name)
-                print('Found player {0}'.format(player_name))
-                self.sql_insert('players', [player_name])
-                self.sql_insert('registers', [player_name, team_id, "date('1970-01-01')"])
-
+        
     def retrieve_series(self, url, series_id, soup):
         if series_id not in self.series_ids:
             bo_count = soup.select_one('span.game-num')
@@ -264,6 +252,17 @@ class TournamentParser:
         # PLAYS (players are listed by summonerName only)
         for p in json_data['participants']:
             p_name = pid_to_sname(json_data, p['participantId'])
+            p_name = p_name.split(' ', 1)[1] # Get rid of TeamID
+            if p_name not in self.player_names:
+                self.player_names.append(p_name)
+                print('Found player {0}'.format(p_name))
+                self.sql_insert('players', [p_name])
+                if p['teamId'] == 100:
+                    self.sql_insert('registers', [p_name, t1_id, "date('1970-01-01')"])
+                elif p['teamId'] == 200:
+                    self.sql_insert('registers', [p_name, t2_id, "date('1970-01-01')"])
+                else:
+                    raise ValueError('Could not identify player team')
 
             role = p['timeline']['role']
             lane = p['timeline']['lane']
@@ -289,15 +288,15 @@ class TournamentParser:
                                                             pstats['neutralMinionsKilledEnemyJungle'],
                                                             pstats['goldEarned']])
 
-            # INTERACTS
+        # INTERACTS
 
-            for frame in json_timeline['frames']:
-                for e in frame['events']:
-                    is_buy = 1 if e['type'] == 'ITEM_PURCHASED' else 0
-                    if e['type'] == 'ITEM_PURCHASED' or e['type'] == 'ITEM_SOLD':
-                        self.sql_insert('interacts', [series_id, match_number,
-                                                                     pid_to_sname(json_data, e['participantId']),
-                                                                     e['itemId'], e['timestamp'], is_buy])
+        for frame in json_timeline['frames']:
+            for e in frame['events']:
+                is_buy = 1 if e['type'] == 'ITEM_PURCHASED' else 0
+                if e['type'] == 'ITEM_PURCHASED' or e['type'] == 'ITEM_SOLD':
+                    self.sql_insert('interacts', [series_id, match_number,
+                                                                 pid_to_sname(json_data, e['participantId']).split(' ',1)[1],
+                                                                 e['itemId'], e['timestamp'], is_buy])
 
 if __name__ == '__main__':
     starter_url = sys.argv[1]
@@ -318,7 +317,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 5:
         data_file = sys.argv[5]
     else:
-        data_file = 'tournament_data.json'
+        data_file = 'tournament_data.sql'
     if len(sys.argv) > 6:
         do_load = sys.argv[6]
     else:
