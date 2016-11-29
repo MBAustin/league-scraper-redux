@@ -156,11 +156,9 @@ class TournamentParser:
             html = html_dump.read()
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Can't do region sometimes because team bio doesn't exist or won't load
-        region = 'UNKNOWN'
-        team_info = soup.find('div', class_='team-bio')
+        team_info = soup.select_one('div.team-bio')
         if team_info:
-            region = [r for r in self.REGIONS if team_info.find_all(text=r)]
+            region = [r for r in self.REGIONS if r in str(team_info)]
             if len(region) > 1:
                 raise NameError('Multiple regions found for team')
             elif len(region) == 0:
@@ -173,9 +171,14 @@ class TournamentParser:
                 elif team_info.find_all(re.compile('IWC|International Wild Card')):
                     region = 'IWC'
                 else:
+                    print('Found no known region for {0}'.format(team_id))
                     region = 'UNKNOWN'
             else:
                 region = region[0]
+                print('{0} is from the {1} region'.format(team_id, region))
+        else:
+            # Can't do region sometimes because team bio doesn't exist or won't load
+            region = 'UNKNOWN'
         try:
             team_name = soup.find('span', class_='team-name').get_text().strip()
             self.sql_insert('teams', [team_id, region, team_name])
