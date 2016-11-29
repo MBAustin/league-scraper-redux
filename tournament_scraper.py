@@ -116,7 +116,7 @@ class TournamentParser:
                 sys.exit(1)
 
     def sql_insert(self, table, args):
-        insert_string = "INSERT INTO {0} VALUES(".format(table)
+        insert_string = "INSERT" + " INTO {0} VALUES(".format(table)  # There is a good reason for this
         if len(args) > 1:
             for arg in args[0:len(args) - 1]:
                 if type(arg) is int or (type(arg) is not int and 'date(' in arg):
